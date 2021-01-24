@@ -35,31 +35,18 @@ const VICTIM_COLOR = "red";
 const HAZARD_COLOR = "yellow";
 
 var grid;
-var botExplored = new Set();
-var tempBotExplored = new Set();
-var data;
 var autoBot;
-var victim1, victim2, hazard1, hazard2; // come back
-var obstacles;
-var openList;
-var closedList;
-var pathToGoal;
 var mapPaths = ["src/sample-map.json", "src/data.json", "src/data1.json", "src/data3.json", "src/data4.json", "src/data6.json", "src/data7.json", "src/data8.json", "src/data9.json", "src/data10.json", "src/data11.json", "src/data12.json", "src/data13.json", "src/data14.json"];
-var pathIndex = 8;
+var pathIndex = 2;
 var currentPath = mapPaths[pathIndex];
+var globalPrevious1;
 
-var viewRadius = 0;
 var count = 0;
-var waitCount = 0;
-var step = 0;
+var waitCount = 4;
 var seconds = 0;
 var timeout;
 var eventListenersAdded = false;
 var pause = false;
-var botLeft, botRight, botTop, botBottom;
-var intervalCount = 0;
-var log = [];
-var startTime;
 
 $(document).ready(function() {
     startTime = new Date();
@@ -92,29 +79,46 @@ $(document).ready(function() {
         count = 0;
 
         if (!pause) {
-            let previous = autoBot.loc;
-            mark(autoBot.loc);
-            navigate(autoBot.loc);
-            drawMap([grid[previous]]);
-            spawn([autoBot], 1);
-            console.log(grid[previous], grid[autoBot.loc])
+            move(autoBot);
         }
     });
 
     requestAnimationFrame(loop);
 });
 
+function move(bot) {
+    let previousCell = bot.loc;
+    mark(previousCell);
+    navigate(previousCell);
+    grid[previousCell].loopTrace.id = bot.id;
+    grid[bot.loc].loopTrace.previous = globalPrevious1;
+    grid[previousCell].loopTrace.next = bot.loc;
+    drawMap([grid[previousCell]]);
+    spawn(bot);
+    console.log(previousCell, grid[previousCell], bot.loc, grid[bot.loc])
+}
+
+// marking step
 function mark(loc) {
     if (!isBlockingPath(loc)) {
         grid[loc].visited = true;
     } else {
         grid[loc].explored = true;
     }
+
+    /* let top = loc - 1, bottom = loc + 1, left = loc - rows, right = loc + rows;
+
+    if (((exists(top) && (!top.isWall || !top.visited)) && (exists(bottom) && (!bottom.isWall || !bottom.visited))) || ((exists(left) && (!left.isWall || !left.visited)) && (exists(right) && (!right.isWall || !right.visited)))) {
+        grid[loc].explored = true;
+    } else {
+        grid[loc].visited = true;
+    } */
 }
 
 // blocking path if at least two of the immediate diagonal cells are inaccessible
 function isBlockingPath(loc) {
-    let topLeft = loc - rows - 1;
+    // my first
+    /* let topLeft = loc - rows - 1;
     let topRight = loc + rows - 1;
     let bottomLeft = loc - rows + 1;
     let bottomRight = loc + rows + 1;
@@ -125,7 +129,82 @@ function isBlockingPath(loc) {
     if (bottomLeft > 0 && (grid[bottomLeft].isWall || grid[bottomLeft].visited)) inaccessibleCount++;
     if (bottomRight < grid.length && (grid[bottomRight].isWall || grid[bottomRight].visited)) inaccessibleCount++;
 
-    return inaccessibleCount > 1;
+    return inaccessibleCount > 1; */
+
+    // pair programmed
+    /* let top = loc - 1, bottom = loc + 1, left = loc - rows, right = loc + rows;
+
+    if ((((exists(top) && (!top.isWall || !top.visited)) && (exists(bottom) && (!bottom.isWall || !bottom.visited)))
+    || (((exists(left) && (!left.isWall || !left.visited)) && (exists(right) && (!right.isWall || !right.visited)))) {
+        grid[loc].explored = true;
+    } else {
+        grid[loc].visited = true;
+    } */
+
+    let top = loc - 1, bottom = loc + 1, left = loc - rows, right = loc + rows;
+    let topLeft = loc - rows - 1, topRight = loc + rows - 1, bottomLeft = loc - rows + 1, bottomRight = loc + rows + 1;
+    let toCheck = [topLeft, topRight, bottomLeft, bottomRight];
+    let toCheck2 = [];
+    let diagonalInaccessible = 0, straightInaccessible = 0;
+
+    // 3rd try - corner = immediate diagonal cell
+    if (exists(top) && (grid[top].isWall || grid[top].visited)) {   // if top is inaccessible, don't check top left and top right
+        if (toCheck.includes(topLeft)) toCheck.splice(toCheck.indexOf(topLeft), 1);
+        if (toCheck.includes(topRight)) toCheck.splice(toCheck.indexOf(topRight), 1);
+        straightInaccessible++;
+    }
+    if (exists(bottom) && (grid[bottom].isWall || grid[bottom].visited)) {  // if bottom is inaccessible, don't check bottom left and bottom right
+        if (toCheck.includes(bottomLeft)) toCheck.splice(toCheck.indexOf(bottomLeft), 1);
+        if (toCheck.includes(bottomRight)) toCheck.splice(toCheck.indexOf(bottomRight), 1);
+        straightInaccessible++;
+    }
+    if (exists(left) && (grid[left].isWall || grid[left].visited)) {    // if left is inaccessible, don't check top left and bottom left
+        if (toCheck.includes(topLeft)) toCheck.splice(toCheck.indexOf(topLeft), 1);
+        if (toCheck.includes(bottomLeft)) toCheck.splice(toCheck.indexOf(bottomLeft), 1);
+        straightInaccessible++;
+    }
+    if (exists(right) && (grid[right].isWall || grid[right].visited)) { // if right is inaccessible, don't check top right and bottom right
+        if (toCheck.includes(topRight)) toCheck.splice(toCheck.indexOf(topRight), 1);
+        if (toCheck.includes(bottomRight)) toCheck.splice(toCheck.indexOf(bottomRight), 1);
+        straightInaccessible++;
+    }
+
+    if (straightInaccessible == 3) return false;
+    
+    if (toCheck.length == 0) return true;   // if all corners are inaccessible, you're blocking the way
+
+    for (const cell of toCheck) {
+        if (grid[cell].isWall || grid[cell].visited) diagonalInaccessible++;
+    }
+
+    if (toCheck.length < 3) return diagonalInaccessible > 0;   // if you're not checking all corners and at least one cell is inaccessible, you're blocking the way
+    else return diagonalInaccessible > 1;  // if you're checking all corners and more than one cell are inaccessible, you're blocking the way
+
+    // 4th try
+    /* if (exists(top) && !(grid[top].isWall || grid[top].visited)) {
+        if (!toCheck2.includes(topLeft)) toCheck2.push(topLeft);
+        if (!toCheck2.includes(topRight)) toCheck2.push(topRight);
+    } else if (exists(bottom) && !(grid[bottom].isWall || grid[bottom].visited)) {
+        if (!toCheck2.includes(bottomLeft)) toCheck2.push(bottomLeft);
+        if (!toCheck2.includes(bottomRight)) toCheck2.push(bottomRight);
+    } else if (exists(left) && !(grid[left].isWall || grid[left].visited)) {
+        if (!toCheck2.includes(topLeft)) toCheck2.push(topLeft);
+        if (!toCheck2.includes(bottomLeft)) toCheck2.push(bottomLeft);
+    } else if (exists(right) && !(grid[right].isWall || grid[right].visited)) {
+        if (!toCheck2.includes(topRight)) toCheck2.push(topRight);
+        if (!toCheck2.includes(bottomRight)) toCheck2.push(bottomRight);
+    }
+
+    for (const cell of toCheck) {
+        if (grid[cell].isWall || grid[cell].visited) inaccessibleCount++;
+    }
+
+    if (toCheck.length < 3) return inaccessibleCount > 0;
+    else return inaccessibleCount > 1; */
+}
+
+function exists(loc) {
+    return loc >= 0 && loc < grid.length;
 }
 
 function navigate(loc) {
@@ -139,26 +218,25 @@ function navigate(loc) {
     let explored = [], unexplored = [];
 
     for (const cell of news) {
-        if (cell > 0 && cell < grid.length && !grid[cell].isWall && !grid[cell].visited) {
+        if (cell >= 0 && cell < grid.length && !grid[cell].isWall && !grid[cell].visited) {
             if (grid[cell].explored) explored.push(cell);
             else unexplored.push(cell);
         }
     }
 
-    /* if (top > 0 && !grid[top].isWall && grid[top].explored && !grid[top].visited) explored.push(top);
-    else unexplored.push(top);
-    if (left > 0 && !grid[left].isWall && grid[left].explored && !grid[top].visited) explored.push(left);
-    else unexplored.push(left);
-    if (bottom < grid.length && !grid[bottom].isWall && grid[bottom].explored && !grid[top].visited) explored.push(bottom);
-    else unexplored.push(bottom);
-    if (right < grid.length && !grid[right].isWall && grid[right].explored && !grid[top].visited) explored.push(right);
-    else unexplored.push(right); */
-
     if (unexplored.length > 0) {
-        autoBot.loc = goToUnexplored(unexplored);
+        let temp = goToUnexplored(unexplored);
+        // if (grid[temp].trace.next == autoBot.loc) controlLoop();
+        // else autoBot.loc = temp;
+        globalPrevious1 = autoBot.loc;
+        autoBot.loc = temp;
         console.log("unexplored. moving...");
     } else if (explored.length > 0) {
-        autoBot.loc = goToExplored(explored);
+        let temp = goToExplored(explored);
+        // if (grid[temp].trace.next == autoBot.loc) controlLoop();
+        // else autoBot.loc = temp;
+        globalPrevious1 = autoBot.loc;
+        autoBot.loc = temp;
         console.log("explored. moving...");
     } else {
         pause = true;
@@ -193,6 +271,11 @@ function goToUnexplored(unexplored) {
  * Instead select the first explored cell in an ordered list of adjacent cells
  */
 function goToExplored(explored) {
+    if (explored.length > 1) {
+        for (const cell of explored) {
+            if (cell != globalPrevious1) return cell;
+        }
+    }
     return explored[0];
 }
 
@@ -203,27 +286,11 @@ function findBorder(loc) {
     grid[loc - rows + 1], grid[loc - rows]];
 }
 
-$(window).on("load", () => {
-    $.each(mapPaths, (i, path) => {
-        $dropdown.append($('<option></option>').val(i).html(path));
-    });
-    $dropdown.prop('selectedIndex', pathIndex);
-});
-
-$("#maps").change(() => {
-    currentPath = $("#maps option:selected").text();
-    $map.clearCanvas();
-    clearInterval(timeout);
-    createMap(currentPath);
-    toggleModal();
-});
-
 function eventKeyHandlers(e) {
     switch (e.keyCode) {
         case 67:    // c
             e.preventDefault();
             updateScrollingPosition(grid[autoBot.loc]);
-            console.log("Shifted focus to agent", performance.now());
             break;
         case 72:    // h
             e.preventDefault();
@@ -246,88 +313,6 @@ function eventKeyHandlers(e) {
     }
 }
 
-function toggleModal() {
-    if ($modal.css('display') == 'none') $modal.css('display', 'block');
-    else $modal.css('display', 'none');
-}
-
-function closeModal() {
-    $modal.css('display', 'none');
-}
-
-function terminate() {
-    pause = true;
-    clearInterval(timeout);
-    data.decisions = log;
-    data.obstacles = obstacles;
-    // console.log(data);
-    $.post("/simulation", data, res => console.log(res))
-    .fail(() => alert("POST failed"));
-    window.location.href = "/stats";
-}
-
-function showExploredInfo() {
-    spawn(obstacles, 10);
-
-    $(document).off();
-    
-    $popupModal.css('display', 'block');
-    $popupModal.css('visibility', 'visible');
-    $popupModal.css('opacity', '1');
-    $minimapImage.attr("src", $map.getCanvasImage());
-    $botImage.attr("src", $map.getCanvasImage());
-
-    if (log[intervalCount - 1] != null) {
-        let chosenOption = (log[intervalCount - 1].trusted) ? "Integrated" : "Discarded";
-        if (chosenOption == "Integrated") {
-            $log.append(`<p style='background-color: #99ffb7;'>${intervalCount} - ${chosenOption}</p>`);
-        } else {
-            $log.append(`<p style='background-color: #ff9eae;'>${intervalCount} - ${chosenOption}</p>`);
-        }
-    }
-
-    getSetBoundaries(tempBotExplored, 1);
-    scaleImages();
-
-    pause = true;
-    clearInterval(timeout);
-
-    setTimeout(() => { $popupModal.scrollTop(-10000) }, 500);
-    setTimeout(() => { $log.scrollLeft(10000) }, 500);
-}
-
-// redraw the map and hide pop-up
-function hideExploredInfo() {
-    tempBotExplored.clear();
-
-    refreshMap();
-
-    $(document).on('keydown', function(e) {
-        eventKeyHandlers(e);
-    });
-
-    $popupModal.css('visibility', 'hidden');
-    $popupModal.css('display', 'none');
-    $popupModal.css('opacity', '0');
-    clearInterval(timeout);
-    timeout = setInterval(updateTime, 1000);
-    pause = false;
-}
-
-function confirmExploredArea() {
-    tempBotExplored.forEach(item => {
-        grid[item].isBotExplored = true;
-        botExplored.add(item);
-    });
-    log.push({interval: intervalCount++, trusted: true});
-    hideExploredInfo();
-}
-
-function undoExploration() {
-    log.push({interval: intervalCount++, trusted: false});
-    hideExploredInfo();
-}
-
 function updateScrollingPosition(loc) {
     let x = loc.x * boxWidth;
     let y = loc.y * boxHeight;
@@ -346,16 +331,6 @@ function updateTime() {
 // creates an array containing cells with x and y positions and additional details
 function createMap(currentPath, cb) {
     grid = [];
-    data = {agentData: [], decisions: [], obstacles: []};
-    tempBotExplored.clear();
-    botExplored.clear();
-    log = [];
-    $log.empty();
-    step = 0;
-    pathToGoal = [];
-    obstacles = [];
-    openList = [];
-    closedList = [];
 
     $.getJSON(currentPath, data => {
         rows = data.dimensions[0].rows;
@@ -363,26 +338,22 @@ function createMap(currentPath, cb) {
         boxWidth = canvasWidth/rows;
         boxHeight = canvasHeight/columns;
         $.each(data.map, (i, value) => {
-            grid.push({ x: value.x, y: value.y, isWall: value.isWall == "true", isHumanExplored: false, isBotExplored: false, explored: false, visited: false });
+            grid.push({ x: value.x, y: value.y,
+                isWall: value.isWall == "true", explored: false, visited: false,
+                loopTrace: { id: null, previous: null, next: null }, loopMark: { id: null } });
         });
     }).fail(() => {
         alert("An error has occured.");
     }).done(() => {
-        autoBot = {id: "agent", loc: 151166/* getRandomLoc(grid) */, color: AUTO_BOT_COLOR, dir: 1};
-        victim1 = {id: "victim", loc: 143650/* getRandomLoc(grid) */, color: VICTIM_COLOR, isFound: false};
+        autoBot = { id: "agent1", loc: 532, color: TEMP_COLOR, dir: 1 };
+        /* victim1 = {id: "victim", loc: getRandomLoc(grid), color: VICTIM_COLOR, isFound: false};
         victim2 = {id: "victim", loc: getRandomLoc(grid), color: VICTIM_COLOR, isFound: false};
         hazard1 = {id: "hazard", loc: getRandomLoc(grid), color: HAZARD_COLOR, isFound: false};
         hazard2 = {id: "hazard", loc: getRandomLoc(grid), color: HAZARD_COLOR, isFound: false};
-        obstacles.push(victim1, /* victim2, */ hazard1, hazard2);
+        obstacles.push(victim1, hazard1, hazard2); */
 
         drawMap(grid);
-        spawn([autoBot, victim1, /* victim2, */ hazard1, hazard2], 1);
-
-        console.log("Spawn", performance.now(), autoBot.loc);
-
-        tracker = { loc: autoBot.loc, timestamp: performance.now() };
-        data.agentData.push(tracker);
-        console.log(tracker);
+        spawn(autoBot);
 
         timeout = setInterval(updateTime, 1000);
 
@@ -425,43 +396,10 @@ function drawMap(grid) {
     }
 }
 
-// draw a square given a cell
-function draw(cell) {
-    let lightColor = LIGHT_TEMP_COLOR, darkColor = TEMP_COLOR;
-
-    if (cell.isHumanExplored && !cell.isBotExplored) {
-        lightColor = LIGHT_USER_BOT_COLOR;
-        darkColor = USER_BOT_COLOR;
-    } else if (cell.isBotExplored && !cell.isHumanExplored) {
-        lightColor = LIGHT_AUTO_BOT_COLOR;
-        darkColor = AUTO_BOT_COLOR;
-    } else if (cell.isHumanExplored && cell.isBotExplored) {
-        lightColor = LIGHT_TEAM_COLOR;
-        darkColor = TEAM_COLOR;
-    }
-
-    if (cell.isWall) {
-        $map.drawRect({
-            fillStyle: WALL_COLOR,
-            strokeStyle: darkColor,
-            strokeWidth: 1,
-            cornerRadius: 2,
-            x: cell.x*boxWidth, y: cell.y*boxHeight,
-            width: boxWidth - 1, height: boxHeight - 1
-        });
-    } else {
-        $map.drawRect({
-            fillStyle: lightColor,
-            x: cell.x*boxWidth, y: cell.y*boxHeight,
-            width: boxWidth - 1, height: boxHeight - 1
-        });
-    }
-}
-
 // spawns the bots in their locations
 // size - scale factor
-function spawn(members, size) {
-    let bot;
+function spawn(bot) {
+    /* let bot;
     for (let i = 0; i < members.length; i++) {
         bot = members[i]
         if (bot.id == "human" || bot.id == "agent") {
@@ -470,14 +408,14 @@ function spawn(members, size) {
                 x: grid[bot.loc].x*boxWidth, y: grid[bot.loc].y*boxHeight,
                 width: (boxWidth - 1)*size, height: (boxHeight - 1)*size
             });
-        } else if (bot.id == "victim"/*  && bot.isFound */) {
+        } else if (bot.id == "victim") {
             $map.drawEllipse({
                 fromCenter: true,
                 fillStyle: bot.color,
                 x: grid[bot.loc].x*boxWidth + boxWidth/2, y: grid[bot.loc].y*boxHeight + boxHeight/2,
                 width: (boxWidth - 1)*size, height: (boxHeight - 1)*size
             });
-        } else if (bot.id == "hazard"/*  && bot.isFound */) {
+        } else if (bot.id == "hazard") {
             $map.drawPolygon({
                 fromCenter: true,
                 fillStyle: bot.color,
@@ -486,270 +424,12 @@ function spawn(members, size) {
                 sides: 3
             });
         }
-    }
-}
-
-// redraws the map and spawns the bots in their new location
-function refreshMap() {
-    // bot surroundings
-    let botFOV = findLineOfSight(autoBot);
-    let botFOVSet = new Set(botFOV);    // convert array to set
-
-    botFOVSet.forEach(item => {
-        tempBotExplored.add(item);
-        draw(grid[item]);
-
-        for (let j = 0; j < obstacles.length; j++) {
-            if (item == obstacles[j].loc) {
-                obstacles[j].isFound = true;
-            }
-        }
+    } */
+    $map.drawRect({
+        fillStyle: bot.color,
+        x: grid[bot.loc].x*boxWidth, y: grid[bot.loc].y*boxHeight,
+        width: (boxWidth - 1), height: (boxHeight - 1)
     });
-
-    for (let i = 0; i < pathToGoal.length; i++) {
-        let cell = pathToGoal[i];
-        $map.drawRect({
-            fillStyle: 'green',
-            x: cell.x*boxWidth, y: cell.y*boxHeight,
-            width: boxWidth - 1, height: boxHeight - 1
-        });
-    }
-
-    spawn([autoBot, victim1, /* victim2, */ hazard1, hazard2], 1);
-}
-
-// 0 - human, 1 - bot
-function getSetBoundaries(thisSet, who) {
-    if (who == 1) {
-        let setIterator = thisSet.values();
-        let firstElement = setIterator.next().value;
-        botLeft = grid[firstElement].x;
-        botRight = grid[firstElement].x;
-        botTop = grid[firstElement].y;
-        botBottom = grid[firstElement].y;
-
-        for (let i = setIterator.next().value; i != null; i = setIterator.next().value) {
-            if (grid[i].x < botLeft) botLeft = grid[i].x;
-            if (grid[i].x > botRight) botRight = grid[i].x;
-            if (grid[i].y < botTop) botTop = grid[i].y;
-            if (grid[i].y > botBottom) botBottom = grid[i].y;
-        }
-    }
-}
-
-function scaleImages() {
-    let botWidth = columns/(botRight - botLeft + 5) * 100;
-    let botHeight = rows/(botBottom - botTop + 5) * 100;
-
-    botWidth = (botWidth < 100) ? 100 : botWidth;
-    botHeight = (botHeight < 100) ? 100 : botHeight;
-
-    if (botWidth > botHeight) {
-        $botImage.attr("width", botHeight + "%");
-        $botImage.attr("height", botHeight + "%");
-    } else {
-        $botImage.attr("width", botWidth + "%");
-        $botImage.attr("height", botWidth + "%");
-    }
-    
-    $botImage.parent()[0].scroll((botLeft + (botRight - botLeft + 1)/2)*($botImage.width()/columns) - $('.explored').width()/2, ((botTop + (botBottom - botTop + 1)/2)*($botImage.height()/rows)) - $('.explored').height()/2);
-}
-
-function findLineOfSight(bot) {
-    let thisSurroundings = [[], [], [], []];
-    let centerX = grid[bot.loc].x;
-    let centerY = grid[bot.loc].y;
-    let i = 0, j = 0;
-
-    // quadrant 1
-    for (let y = centerY; y >= centerY - viewRadius; y--) {
-        for (let x = centerX; x <= centerX + viewRadius; x++) {
-            thisSurroundings[0].push({x: i, y: j, loc: y + x*rows});
-            i++;
-        }
-        i = 0;
-        j++;
-    }
-
-    i = 0, j = 0;
-
-    // quadrant 2
-    for (let y = centerY; y >= centerY - viewRadius; y--) {
-        for (let x = centerX; x >= centerX - viewRadius; x--) {
-            thisSurroundings[1].push({x: i, y: j, loc: y + x*rows});
-            i++;
-        }
-        i = 0;
-        j++;
-    }
-
-    i = 0, j = 0;
-
-    // quadrant 3
-    for (let y = centerY; y <= centerY + viewRadius; y++) {
-        for (let x = centerX; x >= centerX - viewRadius; x--) {
-            thisSurroundings[2].push({x: i, y: j, loc: y + x*rows});
-            i++;
-        }
-        i = 0;
-        j++;
-    }
-
-    i = 0, j = 0;
-
-    //quadrant 4
-    for (let y = centerY; y <= centerY + viewRadius; y++) {
-        for (let x = centerX; x <= centerX + viewRadius; x++) {
-            thisSurroundings[3].push({x: i, y: j, loc: y + x*rows});
-            i++;
-        }
-        i = 0;
-        j++;
-    }
-
-    return castRays(thisSurroundings);
-}
-
-// arr has quadrant one ([0]), quadrant two ([1]), quadrant three ([2]), quadrant four ([3]).
-function castRays(arr) {
-    let mySurroundings = [];
-    // quadrant 1
-    for (let i = viewRadius; i < arr[0].length; i += viewRadius + 1) {
-        mySurroundings = mySurroundings.concat(bresenhams(arr[0][0], arr[0][i], 1, arr[0]));
-    }
-    for (let i = arr[0].length - viewRadius - 1; i < arr[0].length - 1; i++) {
-        mySurroundings = mySurroundings.concat(bresenhams(arr[0][0], arr[0][i], 1, arr[0]));
-    }
-
-    // quadrant 2
-    for (let i = viewRadius; i < arr[1].length; i += viewRadius + 1) {
-        mySurroundings = mySurroundings.concat(bresenhams(arr[1][0], arr[1][i], 2, arr[1]));
-    }
-    for (let i = arr[1].length - viewRadius - 1; i < arr[1].length - 1; i++) {
-        mySurroundings = mySurroundings.concat(bresenhams(arr[1][0], arr[1][i], 2, arr[1]));
-    }
-
-    // quadrant 3
-    for (let i = viewRadius; i < arr[2].length; i += viewRadius + 1) {
-        mySurroundings = mySurroundings.concat(bresenhams(arr[2][0], arr[2][i], 3, arr[2]));
-    }
-    for (let i = arr[2].length - viewRadius - 1; i < arr[2].length - 1; i++) {
-        mySurroundings = mySurroundings.concat(bresenhams(arr[2][0], arr[2][i], 3, arr[2]));
-    }
-
-    // quadrant 4
-    for (let i = viewRadius; i < arr[3].length; i += viewRadius + 1) {
-        mySurroundings = mySurroundings.concat(bresenhams(arr[3][0], arr[3][i], 4, arr[3]));
-    }
-    for (let i = arr[3].length - viewRadius - 1; i < arr[3].length - 1; i++) {
-        mySurroundings = mySurroundings.concat(bresenhams(arr[3][0], arr[3][i], 4, arr[3]));
-    }
-
-    return mySurroundings;
-}
-
-function getCell(x, y, grid) {
-    for (let i = 0; i < grid.length; i++) {
-        if (grid[i].x == x && grid[i].y == y) return grid[i];
-    }
-    return null;
-}
-
-function bresenhams(cell1, cell2, quad, thisGrid) {
-    let x1 = cell1.x, y1 = cell1.y, x2 = cell2.x, y2 = cell2.y;
-
-    let dx = x2 - x1, dy = y2 - y1;
-    let m = dy/dx;
-    let p;
-
-    let arr = [];
-    arr.push(getCell(x1, y1, thisGrid).loc);
-    if (m >= 0 && m <= 1) {
-        p = (2*dy) - dx;
-        while (x1 < x2) {
-            if (p < 0) {
-                x1++;
-                p += 2*dy;
-                arr.push(getCell(x1, y1, thisGrid).loc)
-                if (grid[getCell(x1, y1, thisGrid).loc].isWall) break;
-            } else {
-                x1++;
-                y1++;
-                p += 2*(dy - dx);
-                arr.push(getCell(x1, y1, thisGrid).loc);
-                if (grid[getCell(x1, y1, thisGrid).loc].isWall) break;
-            }
-        }
-    } else if (m > 1) {
-        p = (2*dx) - dy;
-        while (y1 < y2) {
-            if (p < 0) {
-                y1++;
-                p += 2*dx;
-                arr.push(getCell(x1, y1, thisGrid).loc);
-                if (grid[getCell(x1, y1, thisGrid).loc].isWall) break;
-            } else {
-                x1++;
-                y1++;
-                p += 2*(dx - dy);
-                arr.push(getCell(x1, y1, thisGrid).loc);
-                if (grid[getCell(x1, y1, thisGrid).loc].isWall) break;
-            }
-        }
-    }
-    // console.log(cell1, cell2, arr, thisGrid);
-    return arr;
-}
-
-// top, bottom, left, right
-function findNeighbours(grid, node) {
-    let ret = [];
-    let loc = node.loc;
-
-    if (!(loc - rows < 0)) {
-        ret.push(grid[loc - rows]);
-    }
-    if (!(loc - 1 < 0)) {
-        ret.push(grid[loc - 1]);
-    }
-    if (!(loc + rows > grid.length - 1)) {
-        ret.push(grid[loc + rows]);
-    }
-    if (!(loc + 1 > grid.length - 1)) {
-        ret.push(grid[loc + 1]);
-    }
-
-    return ret;
-}
-
-// takes the new grid size and modifies the map
-function modifyMap() {
-    let rowsInput = $('#rows').value;
-    let columnsInput = $('#columns').value;
-    if (!(isValidNumber(rowsInput) && isValidNumber(columnsInput))) {
-        alert("Incorrect input. Please enter a positive integer.");
-        return;
-    }
-    rows = parseInt(rowsInput);
-    columns = parseInt(columnsInput);
-    createMap();
-    autoBot.loc = getRandomLoc();
-    refreshMap();
-}
-
-// sets the speed of the autonomous bot
-function setSpeed() {
-    let speed = $('speed').value;
-    if (!isValidNumber(speed)) {
-        alert("Incorrect input. Please enter a positive integer.");
-        return;
-    }
-    waitCount = parseInt(speed);
-}
-
-// checks if the parameter is a valid positive integer
-function isValidNumber(str) {
-    return /^\s*\d+\s*$/.test(str);
 }
 
 // gets a random spawn location for the robot
