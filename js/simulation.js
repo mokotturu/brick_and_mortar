@@ -40,9 +40,10 @@ var mapPaths = ["src/sample-map.json", "src/data.json", "src/data1.json", "src/d
 var pathIndex = 2;
 var currentPath = mapPaths[pathIndex];
 var globalPrevious1;
+var trackLoop = [];
 
 var count = 0;
-var waitCount = 4;
+var waitCount = 10;
 var seconds = 0;
 var timeout;
 var eventListenersAdded = false;
@@ -80,6 +81,7 @@ $(document).ready(function() {
 
         if (!pause) {
             move(autoBot);
+            updateScrollingPosition(grid[autoBot.loc]);
         }
     });
 
@@ -88,14 +90,47 @@ $(document).ready(function() {
 
 function move(bot) {
     let previousCell = bot.loc;
+
+    // exploration steps
     mark(previousCell);
-    navigate(previousCell);
+    let newLoc = navigate(bot, previousCell);
+    console.log(grid[newLoc])
+
+    if (newLoc == null) return;
+    else if (grid[newLoc].loopTrace.previous == previousCell) {
+        // pause = true;
+        if (trackLoop.includes(newLoc)) {
+            pause = true;
+        } else {
+            if (!grid[newLoc].explored) {
+                console.log("covering")
+                grid[previousCell].visited = true;
+                trackLoop = [];
+                globalPrevious1 = autoBot.loc;
+                autoBot.loc = grid[previousCell].loopTrace.previous;
+            }
+            trackLoop.push(newLoc);
+        }
+        console.log("loop detected. stopping...");
+    } else {
+        globalPrevious1 = autoBot.loc;
+        autoBot.loc = newLoc;
+    }
+
+    // marking for loop detection
     grid[previousCell].loopTrace.id = bot.id;
-    grid[bot.loc].loopTrace.previous = globalPrevious1;
-    grid[previousCell].loopTrace.next = bot.loc;
+    grid[previousCell].loopTrace.next = newLoc;
+    grid[newLoc].loopTrace.previous = globalPrevious1;
+
+    // render
     drawMap([grid[previousCell]]);
     spawn(bot);
-    console.log(previousCell, grid[previousCell], bot.loc, grid[bot.loc])
+}
+
+function loopDetected(bot, loc) {
+    let newLoc = navigate(bot, loc);
+    grid[newLoc].loopMark = bot.id;
+    trackLoop.push(newLoc);
 }
 
 // marking step
@@ -179,35 +214,13 @@ function isBlockingPath(loc) {
 
     if (toCheck.length < 3) return diagonalInaccessible > 0;   // if you're not checking all corners and at least one cell is inaccessible, you're blocking the way
     else return diagonalInaccessible > 1;  // if you're checking all corners and more than one cell are inaccessible, you're blocking the way
-
-    // 4th try
-    /* if (exists(top) && !(grid[top].isWall || grid[top].visited)) {
-        if (!toCheck2.includes(topLeft)) toCheck2.push(topLeft);
-        if (!toCheck2.includes(topRight)) toCheck2.push(topRight);
-    } else if (exists(bottom) && !(grid[bottom].isWall || grid[bottom].visited)) {
-        if (!toCheck2.includes(bottomLeft)) toCheck2.push(bottomLeft);
-        if (!toCheck2.includes(bottomRight)) toCheck2.push(bottomRight);
-    } else if (exists(left) && !(grid[left].isWall || grid[left].visited)) {
-        if (!toCheck2.includes(topLeft)) toCheck2.push(topLeft);
-        if (!toCheck2.includes(bottomLeft)) toCheck2.push(bottomLeft);
-    } else if (exists(right) && !(grid[right].isWall || grid[right].visited)) {
-        if (!toCheck2.includes(topRight)) toCheck2.push(topRight);
-        if (!toCheck2.includes(bottomRight)) toCheck2.push(bottomRight);
-    }
-
-    for (const cell of toCheck) {
-        if (grid[cell].isWall || grid[cell].visited) inaccessibleCount++;
-    }
-
-    if (toCheck.length < 3) return inaccessibleCount > 0;
-    else return inaccessibleCount > 1; */
 }
 
 function exists(loc) {
     return loc >= 0 && loc < grid.length;
 }
 
-function navigate(loc) {
+function navigate(bot, loc) {
     let top = loc - 1;
     let bottom = loc + 1;
     let left = loc - rows;
@@ -226,18 +239,28 @@ function navigate(loc) {
 
     if (unexplored.length > 0) {
         let temp = goToUnexplored(unexplored);
-        // if (grid[temp].trace.next == autoBot.loc) controlLoop();
-        // else autoBot.loc = temp;
-        globalPrevious1 = autoBot.loc;
-        autoBot.loc = temp;
-        console.log("unexplored. moving...");
+        // if (grid[temp].loopTrace.previous == loc) {
+        //     loopDetected(bot);
+        //     return;
+        // } else {
+
+            // globalPrevious1 = autoBot.loc;
+            // autoBot.loc = temp;
+
+        // }
+        return temp;
     } else if (explored.length > 0) {
         let temp = goToExplored(explored);
-        // if (grid[temp].trace.next == autoBot.loc) controlLoop();
-        // else autoBot.loc = temp;
-        globalPrevious1 = autoBot.loc;
-        autoBot.loc = temp;
-        console.log("explored. moving...");
+        // if (grid[temp].loopTrace.previous == loc) {
+        //     loopDetected(bot);
+        //     return;
+        // } else {
+
+            // globalPrevious1 = autoBot.loc;
+            // autoBot.loc = temp;
+
+        // }
+        return temp;
     } else {
         pause = true;
         console.log("done.");
@@ -262,6 +285,7 @@ function goToUnexplored(unexplored) {
         }
         numInaccessible = 0;
     }
+    trackLoop = [];
     return highestID;
 }
 
@@ -276,6 +300,8 @@ function goToExplored(explored) {
             if (cell != globalPrevious1) return cell;
         }
     }
+    // grid[explored[0]].visited = true;   // EXPERIMENTAL
+    // drawMap([grid[explored[0]]]);
     return explored[0];
 }
 
@@ -285,6 +311,47 @@ function findBorder(loc) {
     grid[loc + rows], grid[loc + rows + 1], grid[loc + 1], 
     grid[loc - rows + 1], grid[loc - rows]];
 }
+
+/* function loopDetected(bot) {
+    console.log(`loop detected.`);
+    // pause = true;
+    loopControl(bot);
+}
+
+function loopControl(bot) {
+    let loc = bot.loc;
+    let trackedLocs = [];
+    while (grid[loc].loopMark != bot.id) {
+        if (grid[loc].loopTrace.next != null) {
+            autoBot.loc = grid[loc].loopTrace.next;
+        } else {
+            break;
+        }
+
+        grid[loc].loopMark = autoBot.id;
+        trackedLocs.push(loc);
+
+        console.log("loop control 1");
+        
+        // render
+        drawMap([grid[loc]]);
+        spawn(autoBot);
+    }
+
+    console.log("reached beginning of loop");
+    grid[autoBot.loc].visited = true;
+    // render
+    drawMap([grid[loc]]);
+    spawn(autoBot);
+    for (let i = trackedLocs.length - 1; i >= 0; i--) {
+        autoBot.loc = trackedLocs[i];
+        grid[autoBot.loc].visited = true;
+        // render
+        drawMap([grid[loc]]);
+        spawn(autoBot);
+        grid[trackedLocs[i]].loopMark = null;
+    }
+} */
 
 function eventKeyHandlers(e) {
     switch (e.keyCode) {
@@ -321,10 +388,6 @@ function updateScrollingPosition(loc) {
 
 function updateTime() {
     seconds++;
-    if (seconds % 1000 == 0) {
-        seconds = 0;
-        showExploredInfo();
-    }
     $timer.text(seconds);
 }
 
@@ -345,7 +408,7 @@ function createMap(currentPath, cb) {
     }).fail(() => {
         alert("An error has occured.");
     }).done(() => {
-        autoBot = { id: "agent1", loc: 532, color: TEMP_COLOR, dir: 1 };
+        autoBot = { id: "agent1", loc: 482/* getRandomLoc(grid) */, color: TEMP_COLOR, dir: 1 };
         /* victim1 = {id: "victim", loc: getRandomLoc(grid), color: VICTIM_COLOR, isFound: false};
         victim2 = {id: "victim", loc: getRandomLoc(grid), color: VICTIM_COLOR, isFound: false};
         hazard1 = {id: "hazard", loc: getRandomLoc(grid), color: HAZARD_COLOR, isFound: false};
@@ -354,6 +417,7 @@ function createMap(currentPath, cb) {
 
         drawMap(grid);
         spawn(autoBot);
+        console.log(autoBot.loc);
 
         timeout = setInterval(updateTime, 1000);
 
