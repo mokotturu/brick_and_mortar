@@ -37,13 +37,13 @@ const HAZARD_COLOR = "yellow";
 var grid;
 var autoBot;
 var mapPaths = ["src/sample-map.json", "src/data.json", "src/data1.json", "src/data3.json", "src/data4.json", "src/data6.json", "src/data7.json", "src/data8.json", "src/data9.json", "src/data10.json", "src/data11.json", "src/data12.json", "src/data13.json", "src/data14.json"];
-var pathIndex = 2;
+var pathIndex = 8;
 var currentPath = mapPaths[pathIndex];
 var globalPrevious1;
 var trackLoop = [];
 
 var count = 0;
-var waitCount = 10;
+var waitCount = 7;
 var seconds = 0;
 var timeout;
 var eventListenersAdded = false;
@@ -408,7 +408,7 @@ function createMap(currentPath, cb) {
     }).fail(() => {
         alert("An error has occured.");
     }).done(() => {
-        autoBot = { id: "agent1", loc: 482/* getRandomLoc(grid) */, color: TEMP_COLOR, dir: 1 };
+        autoBot = { id: "agent1", loc: /* 482 */getRandomLoc(grid), color: TEMP_COLOR, dir: 1 };
         /* victim1 = {id: "victim", loc: getRandomLoc(grid), color: VICTIM_COLOR, isFound: false};
         victim2 = {id: "victim", loc: getRandomLoc(grid), color: VICTIM_COLOR, isFound: false};
         hazard1 = {id: "hazard", loc: getRandomLoc(grid), color: HAZARD_COLOR, isFound: false};
